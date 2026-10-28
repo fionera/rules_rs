@@ -341,7 +341,7 @@ def _generate_hub_and_spokes(
 
         if suggested_annotation:
             print("""
-WARNING: A well-known crate annotation exists to make builds of {crate} more hermetic! Apply the following to your MODULE.bazel:
+WARNING: A well-known crate annotation exists to make builds of {crate} in Cargo hub {hub_name} more hermetic! Apply the following to your MODULE.bazel:
 
 ```
 {formatted_well_known_annotation}
@@ -357,6 +357,7 @@ crate.annotation(
 ```""".format(
                 crate = crate_name,
                 formatted_well_known_annotation = suggested_annotation,
+                hub_name = hub_name,
             ))
 
         kwargs = dict(
