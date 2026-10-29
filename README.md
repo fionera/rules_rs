@@ -127,6 +127,42 @@ Use `cargo_config_toml` to configure custom Cargo registries such as Artifactory
 
 A closure that supplies `crate.from_cargo(cargo_config = ...)` uses its own configuration file instead. Only the root module's `crate.config` applies globally; `crate.config` tags in dependency modules are ignored.
 
+### Git dependencies
+
+A crate from a GitHub repository is downloaded from `codeload.github.com` through the Bazel downloader, so it honors `--downloader_config` and retries failed requests. On first resolution, rules_rs records each GitHub archive's checksum in `MODULE.bazel.lock`. Later fetches verify that checksum and reuse Bazel's download cache. Commit `MODULE.bazel.lock` to share the pins across machines.
+
+If the first archive download fails before a checksum is recorded, the remote is not GitHub, or the repository has submodules, rules_rs falls back to `git` when allowed. Once an archive is pinned, a download or checksum failure stops the build instead of silently switching to Git. Changing the Git revision creates a new pin; rules_rs does not silently update a saved checksum.
+
+`crate.from_cargo` allows the Git CLI by default. Set `allow_git_cli = False` to fail when Git is required:
+
+```bzl
+crate.from_cargo(
+    name = "crates",
+    cargo_lock = "//:Cargo.lock",
+    cargo_toml = "//:Cargo.toml",
+    allow_git_cli = False,
+)
+```
+
+`RULES_RS_ALLOW_GIT`, when set, overrides `allow_git_cli` for all hubs. For example, to disallow Git in CI:
+
+```bazelrc
+common:ci --repo_env=RULES_RS_ALLOW_GIT=false
+```
+
+`RULES_RS_ALLOW_GIT` must be `true` or `false`. When it is unset, each hub uses its own `allow_git_cli` value.
+
+GitHub archives may omit files marked `export-ignore` or rewrite files marked `export-subst`. If a Git crate needs the complete checkout, use:
+
+```bzl
+crate.annotation(
+    crate = "example",
+    use_git = True,
+)
+```
+
+This skips the archive download for every crate at the same Git commit in that hub. If Git is disabled by `allow_git_cli` or its `RULES_RS_ALLOW_GIT` override, the fetch fails with an explanation.
+
 ### `.bazelrc`
 
 Linux hosts work with Bazel's default host platform. If you also build on Windows,
