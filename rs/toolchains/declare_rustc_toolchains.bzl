@@ -190,10 +190,6 @@ def declare_rustc_toolchains(
                 "@platforms//cpu:wasm64": lld_label,
                 "//conditions:default": None,
             }),
-            linker_preference = select({
-                "@platforms//os:uefi": "rust",
-                "//conditions:default": "cc",
-            }),
             linker_type = "direct",
             rust_objcopy = _component(rust_objcopy, triple, rustc_repo_label + "rust-objcopy"),
             rustc_lib = _component(rustc_lib, triple, rustc_repo_label + "rustc_lib"),
@@ -272,6 +268,23 @@ def declare_rustc_toolchains(
             **rust_toolchain_kwargs
         )
 
+        # Keep the default linker preference unset for ordinary targets. An
+        # explicit "cc" requires a C/C++ toolchain even during analysis.
+        for bootstrapping in [False, True]:
+            rust_toolchain(
+                name = rust_toolchain_name + "_uefi" + ("_bootstrap" if bootstrapping else ""),
+                bootstrapping = bootstrapping,
+                process_wrapper = "@rules_rust//util/process_wrapper" + (":bootstrap_process_wrapper" if bootstrapping else ""),
+                rust_std = rust_std_label if bootstrapping else toolchain_rust_std,
+                **(rust_toolchain_kwargs | {
+                    "linker_preference": "rust",
+                    "linker": lld_label,
+                    # UEFI has no C/C++ allocator shim or weak symbol support.
+                    "allocator_library": "@rules_rust//rust/private/cc:empty",
+                    "global_allocator_library": "@rules_rust//rust/private/cc:empty",
+                })
+            )
+
         bpf_linker_label = _component(bpf_linker, triple, "@%s//:%s" % (bpf_linker_repository_name(triple), bpf_linker_binary_name(triple)))
         rust_toolchain(
             name = rust_toolchain_name + "_bpf",
@@ -288,15 +301,16 @@ def declare_rustc_toolchains(
             })
         )
 
-        for is_bpf, bootstrapping in [
-            (False, False),
-            (False, True),
-            (True, False),
+        for target_kind, bootstrapping in [
+            ("non_bpf", False),
+            ("non_bpf", True),
+            ("bpf", False),
+            ("uefi", False),
+            ("uefi", True),
         ]:
-            target_kind = "bpf" if is_bpf else "non_bpf"
             bootstrap_suffix = "_bootstrap" if bootstrapping else ""
             bootstrap_setting = "@rules_rust//rust/private:" + ("bootstrapping" if bootstrapping else "bootstrapped")
-            toolchain_suffix = "_bpf" if is_bpf else bootstrap_suffix
+            toolchain_suffix = "_bpf" if target_kind == "bpf" else ("_uefi" if target_kind == "uefi" else "") + bootstrap_suffix
             native.toolchain(
                 name = name + "_{}_{}_to_{}_targets_{}{}".format(
                     exec_triple.system,
@@ -307,7 +321,7 @@ def declare_rustc_toolchains(
                 ),
                 exec_compatible_with = exec_compatible_with,
                 target_settings = target_settings + [
-                    "@rules_rs//rs/toolchains:bpf_targets" if is_bpf else "@rules_rs//rs/toolchains:non_bpf_targets",
+                    "@rules_rs//rs/toolchains:" + target_kind + "_targets",
                     bootstrap_setting,
                 ],
                 toolchain = rust_toolchain_name + toolchain_suffix,
