@@ -184,10 +184,15 @@ def declare_rustc_toolchains(
             linker = select({
                 # Bare-metal targets link with the bundled rust-lld, as the Rust target specs do.
                 # The BPF toolchains below set their own linker.
+                "@platforms//os:uefi": lld_label,
                 "@platforms//os:none": lld_label,
                 "@platforms//cpu:wasm32": lld_label,
                 "@platforms//cpu:wasm64": lld_label,
                 "//conditions:default": None,
+            }),
+            linker_preference = select({
+                "@platforms//os:uefi": "rust",
+                "//conditions:default": "cc",
             }),
             linker_type = "direct",
             rust_objcopy = _component(rust_objcopy, triple, rustc_repo_label + "rust-objcopy"),
@@ -270,7 +275,6 @@ def declare_rustc_toolchains(
         bpf_linker_label = _component(bpf_linker, triple, "@%s//:%s" % (bpf_linker_repository_name(triple), bpf_linker_binary_name(triple)))
         rust_toolchain(
             name = rust_toolchain_name + "_bpf",
-            linker_preference = "rust",
             process_wrapper = "@rules_rust//util/process_wrapper",
             rust_std = toolchain_rust_std,
             **(rust_toolchain_kwargs | {
@@ -280,6 +284,7 @@ def declare_rustc_toolchains(
                 # package.  BPF targets are already gated by the toolchain's
                 # target_settings.
                 "linker": bpf_linker_label,
+                "linker_preference": "rust",
             })
         )
 
